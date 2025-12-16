@@ -1,3 +1,11 @@
+export interface SessionEntry {
+  id: string;
+  date: string;
+  notes?: string;
+  evolution?: string;
+  paid: boolean;
+}
+
 export interface Patient {
   id: string;
   name: string;
@@ -26,7 +34,8 @@ export interface Patient {
   // Documentation
   anamnesisLink?: string;
   lastEvolutionDate?: string;
-  sessionHistory: string[];
+  sessionHistory: string[]; // Legacy: simple date strings
+  sessions: SessionEntry[]; // New: detailed session records
   
   // Notes
   quickContext?: string;

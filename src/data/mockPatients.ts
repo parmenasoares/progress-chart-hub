@@ -1,4 +1,14 @@
-import { Patient } from '@/types/patient';
+import { Patient, SessionEntry } from '@/types/patient';
+
+const createSessions = (dates: string[], withDetails = false): SessionEntry[] => {
+  return dates.map((date, i) => ({
+    id: `session-${Date.now()}-${i}`,
+    date: date,
+    notes: withDetails && i === dates.length - 1 ? 'Paciente relatou melhora significativa. Aplicado liberação miofascial e exercícios de fortalecimento.' : '',
+    evolution: withDetails && i === dates.length - 1 ? 'Boa evolução. Amplitude de movimento aumentou 15%. Dor reduziu de 7/10 para 3/10.' : '',
+    paid: true,
+  }));
+};
 
 export const mockPatients: Patient[] = [
   {
@@ -21,6 +31,16 @@ export const mockPatients: Patient[] = [
     anamnesisLink: 'https://forms.google.com/example',
     lastEvolutionDate: '2025-12-10',
     sessionHistory: ['01/11/2025', '08/11/2025', '15/11/2025', '22/11/2025', '29/11/2025', '06/12/2025', '10/12/2025', '13/12/2025'],
+    sessions: [
+      { id: 's1-1', date: '2025-11-01', notes: 'Avaliação inicial. Paciente com dor intensa ao movimento.', evolution: 'Dor 8/10. Limitação severa de flexão lombar.', paid: true },
+      { id: 's1-2', date: '2025-11-08', notes: 'Liberação miofascial + TENS.', evolution: 'Dor 7/10. Leve melhora relatada.', paid: true },
+      { id: 's1-3', date: '2025-11-15', notes: 'Exercícios de estabilização lombar iniciados.', evolution: 'Dor 6/10. Paciente conseguiu realizar exercícios básicos.', paid: true },
+      { id: 's1-4', date: '2025-11-22', notes: 'Progressão dos exercícios. Mobilização articular.', evolution: 'Dor 5/10. Melhora na amplitude de movimento.', paid: true },
+      { id: 's1-5', date: '2025-11-29', notes: 'Fortalecimento de core. Alongamentos.', evolution: 'Dor 4/10. Paciente relata menos dor ao sentar.', paid: true },
+      { id: 's1-6', date: '2025-12-06', notes: 'Treino funcional leve.', evolution: 'Dor 3/10. Excelente progresso.', paid: true },
+      { id: 's1-7', date: '2025-12-10', notes: 'Manutenção e orientações para casa.', evolution: 'Dor 3/10. Paciente independente nos exercícios.', paid: true },
+      { id: 's1-8', date: '2025-12-13', notes: 'Reavaliação. Ajuste do programa de exercícios.', evolution: 'Dor 2/10. Pronta para alta em breve.', paid: true },
+    ],
     quickContext: 'Indicada pelo Dr. João. Trabalha sentada o dia todo. Boa aderência aos exercícios.',
     createdAt: '2025-10-15',
     updatedAt: '2025-12-10',
@@ -43,6 +63,7 @@ export const mockPatients: Patient[] = [
     financialStatus: 'pago',
     lastEvolutionDate: '2025-12-12',
     sessionHistory: ['01/09/2025', '08/09/2025', '15/09/2025', '22/09/2025', '29/09/2025', '06/10/2025', '13/10/2025', '20/10/2025', '27/10/2025', '03/11/2025', '10/11/2025', '17/11/2025', '24/11/2025', '01/12/2025', '08/12/2025'],
+    sessions: createSessions(['2025-09-01', '2025-09-08', '2025-09-15', '2025-09-22', '2025-09-29', '2025-10-06', '2025-10-13', '2025-10-20', '2025-10-27', '2025-11-03', '2025-11-10', '2025-11-17', '2025-11-24', '2025-12-01', '2025-12-08'], true),
     quickContext: 'Atleta amador. Cirurgia realizada em agosto. Evolução excelente.',
     createdAt: '2025-08-20',
     updatedAt: '2025-12-12',
@@ -60,6 +81,7 @@ export const mockPatients: Patient[] = [
     paymentModality: 'Particular',
     financialStatus: 'pendente',
     sessionHistory: [],
+    sessions: [],
     createdAt: '2025-12-14',
     updatedAt: '2025-12-14',
   },
@@ -82,6 +104,7 @@ export const mockPatients: Patient[] = [
     financialStatus: 'pago',
     lastEvolutionDate: '2025-11-30',
     sessionHistory: ['01/10/2025', '04/10/2025', '08/10/2025', '11/10/2025', '15/10/2025', '18/10/2025', '22/10/2025', '25/10/2025', '29/10/2025', '01/11/2025'],
+    sessions: createSessions(['2025-10-01', '2025-10-04', '2025-10-08', '2025-10-11', '2025-10-15', '2025-10-18', '2025-10-22', '2025-10-25', '2025-10-29', '2025-11-01'], true),
     quickContext: 'Aposentado. Pratica tênis. Alta com orientações de manutenção.',
     createdAt: '2025-09-25',
     updatedAt: '2025-11-30',
@@ -103,6 +126,7 @@ export const mockPatients: Patient[] = [
     financialStatus: 'pago',
     lastEvolutionDate: '2025-10-20',
     sessionHistory: ['01/10/2025', '08/10/2025', '15/10/2025'],
+    sessions: createSessions(['2025-10-01', '2025-10-08', '2025-10-15']),
     quickContext: 'Abandonou tratamento. Tentativas de contato sem sucesso.',
     createdAt: '2025-09-28',
     updatedAt: '2025-10-20',

@@ -19,6 +19,7 @@ const Index = () => {
       treatmentStatus: data.treatmentStatus || 'novo',
       financialStatus: data.financialStatus || 'pendente',
       sessionHistory: data.sessionHistory || [],
+      sessions: data.sessions || [],
       createdAt: new Date().toISOString().split('T')[0],
       updatedAt: new Date().toISOString().split('T')[0],
     } as Patient;
