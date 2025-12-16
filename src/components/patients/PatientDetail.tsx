@@ -1,6 +1,7 @@
 import { Patient, TREATMENT_STATUS_LABELS, FINANCIAL_STATUS_LABELS } from '@/types/patient';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { SessionHistoryManager } from './SessionHistoryManager';
 import { 
   X, 
   Phone, 
@@ -18,12 +19,27 @@ interface PatientDetailProps {
   patient: Patient;
   onClose: () => void;
   onEdit: () => void;
+  onUpdatePatient?: (patient: Patient) => void;
 }
 
-export function PatientDetail({ patient, onClose, onEdit }: PatientDetailProps) {
+export function PatientDetail({ patient, onClose, onEdit, onUpdatePatient }: PatientDetailProps) {
   const sessionsProgress = patient.suggestedSessions 
     ? (patient.completedSessions / patient.suggestedSessions) * 100 
     : 0;
+
+  const handleSessionsChange = (sessions: Patient['sessions']) => {
+    if (onUpdatePatient) {
+      onUpdatePatient({
+        ...patient,
+        sessions,
+        completedSessions: sessions.length,
+        lastEvolutionDate: sessions.length > 0 
+          ? sessions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date
+          : patient.lastEvolutionDate,
+        updatedAt: new Date().toISOString().split('T')[0],
+      });
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/20 backdrop-blur-sm">
@@ -122,7 +138,7 @@ export function PatientDetail({ patient, onClose, onEdit }: PatientDetailProps) 
               <div className="flex justify-between items-center mb-2">
                 <p className="text-sm font-medium text-foreground">Progresso das Sessões</p>
                 <p className="text-sm text-muted-foreground">
-                  {patient.completedSessions}
+                  {patient.sessions?.length || patient.completedSessions}
                   {patient.suggestedSessions && ` / ${patient.suggestedSessions}`}
                 </p>
               </div>
@@ -137,30 +153,18 @@ export function PatientDetail({ patient, onClose, onEdit }: PatientDetailProps) 
             </div>
           </section>
 
-          {/* Session History */}
-          {patient.sessionHistory.length > 0 && (
-            <section className="rounded-lg border border-border p-4">
-              <div className="flex items-center gap-2 mb-4">
-                <ClipboardList className="h-5 w-5 text-accent" />
-                <h3 className="font-display text-lg font-medium text-foreground">Histórico de Sessões</h3>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {patient.sessionHistory.map((date, index) => (
-                  <span 
-                    key={index}
-                    className="rounded-md bg-secondary px-2 py-1 text-xs text-muted-foreground"
-                  >
-                    {date}
-                  </span>
-                ))}
-              </div>
-              {patient.lastEvolutionDate && (
-                <p className="mt-3 text-xs text-muted-foreground">
-                  Última evolução: {new Date(patient.lastEvolutionDate).toLocaleDateString('pt-BR')}
-                </p>
-              )}
-            </section>
-          )}
+          {/* Session History - Enhanced */}
+          <section className="rounded-lg border border-border p-4">
+            <div className="flex items-center gap-2 mb-4">
+              <ClipboardList className="h-5 w-5 text-accent" />
+              <h3 className="font-display text-lg font-medium text-foreground">Histórico de Sessões</h3>
+            </div>
+            <SessionHistoryManager 
+              sessions={patient.sessions || []}
+              onChange={handleSessionsChange}
+              readOnly={!onUpdatePatient}
+            />
+          </section>
 
           {/* Financial */}
           <section className="rounded-lg border border-border bg-secondary/30 p-4">

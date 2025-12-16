@@ -3,6 +3,7 @@ import {
   Patient, 
   TreatmentStatus, 
   FinancialStatus,
+  SessionEntry,
   LEAD_SOURCES, 
   NON_CONVERSION_REASONS, 
   PAYMENT_MODALITIES,
@@ -14,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import { SessionHistoryManager } from './SessionHistoryManager';
 import {
   Select,
   SelectContent,
@@ -21,7 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { X, User, Stethoscope, DollarSign, FileText, Lightbulb } from 'lucide-react';
+import { X, User, Stethoscope, DollarSign, FileText, Lightbulb, ClipboardList } from 'lucide-react';
 
 interface PatientFormProps {
   patient?: Patient | null;
@@ -49,21 +51,36 @@ export function PatientForm({ patient, onSubmit, onClose }: PatientFormProps) {
     anamnesisLink: '',
     quickContext: '',
     sessionHistory: [],
+    sessions: [],
   });
 
   useEffect(() => {
     if (patient) {
-      setFormData(patient);
+      setFormData({
+        ...patient,
+        sessions: patient.sessions || [],
+      });
     }
   }, [patient]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit(formData);
+    const sessions = formData.sessions || [];
+    onSubmit({
+      ...formData,
+      completedSessions: sessions.length,
+      lastEvolutionDate: sessions.length > 0 
+        ? sessions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date
+        : formData.lastEvolutionDate,
+    });
   };
 
   const updateField = <K extends keyof Patient>(field: K, value: Patient[K]) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleSessionsChange = (sessions: SessionEntry[]) => {
+    setFormData(prev => ({ ...prev, sessions }));
   };
 
   return (
@@ -256,6 +273,21 @@ export function PatientForm({ patient, onSubmit, onClose }: PatientFormProps) {
                 </Select>
               </div>
             </div>
+          </section>
+
+          {/* Session History */}
+          <section className="rounded-lg border border-border p-4">
+            <div className="flex items-center gap-2 mb-4">
+              <ClipboardList className="h-5 w-5 text-accent" />
+              <h3 className="font-display text-lg font-medium text-foreground">Histórico de Sessões</h3>
+              <span className="text-xs text-muted-foreground ml-auto">
+                Insira as datas e detalhes de cada sessão realizada
+              </span>
+            </div>
+            <SessionHistoryManager
+              sessions={formData.sessions || []}
+              onChange={handleSessionsChange}
+            />
           </section>
 
           {/* Financial */}

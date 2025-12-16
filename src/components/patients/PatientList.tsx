@@ -114,6 +114,10 @@ export function PatientList({ patients, onAddPatient, onUpdatePatient }: Patient
           patient={viewingPatient}
           onClose={() => setViewingPatient(null)}
           onEdit={() => handleEditPatient(viewingPatient)}
+          onUpdatePatient={(updatedPatient) => {
+            onUpdatePatient(updatedPatient);
+            setViewingPatient(updatedPatient);
+          }}
         />
       )}
     </div>
