@@ -1,15 +1,17 @@
 import { Bell, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { ReactNode } from 'react';
 
 interface HeaderProps {
   title: string;
   subtitle?: string;
   searchValue?: string;
   onSearchChange?: (value: string) => void;
+  rightContent?: ReactNode;
 }
 
-export function Header({ title, subtitle, searchValue, onSearchChange }: HeaderProps) {
+export function Header({ title, subtitle, searchValue, onSearchChange, rightContent }: HeaderProps) {
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-6">
       <div>
@@ -30,6 +32,8 @@ export function Header({ title, subtitle, searchValue, onSearchChange }: HeaderP
             />
           </div>
         )}
+        
+        {rightContent}
         
         <Button variant="ghost" size="icon" className="relative">
           <Bell className="h-5 w-5" />
