@@ -3,9 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Dashboard } from '@/components/dashboard/Dashboard';
 import { PatientList } from '@/components/patients/PatientList';
+import { Agenda } from '@/components/agenda/Agenda';
 import { Header } from '@/components/layout/Header';
 import { Patient } from '@/types/patient';
-import { Calendar, Settings, Loader2, LogOut } from 'lucide-react';
+import { Settings, Loader2, LogOut } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { usePatients } from '@/hooks/usePatients';
 import { Button } from '@/components/ui/button';
@@ -70,14 +71,10 @@ const Index = () => {
         );
       case 'calendar':
         return (
-          <>
-            <Header title="Agenda" subtitle="Em breve" />
-            <div className="flex flex-col items-center justify-center h-96 text-center">
-              <Calendar className="h-16 w-16 text-muted-foreground/50 mb-4" />
-              <h2 className="font-display text-xl font-semibold text-foreground">Agenda em Desenvolvimento</h2>
-              <p className="text-muted-foreground mt-2">Esta funcionalidade estará disponível em breve.</p>
-            </div>
-          </>
+          <Agenda 
+            patients={patients}
+            onUpdatePatient={updatePatient}
+          />
         );
       case 'settings':
         return (
