@@ -1,46 +1,62 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Dashboard } from '@/components/dashboard/Dashboard';
 import { PatientList } from '@/components/patients/PatientList';
 import { Header } from '@/components/layout/Header';
-import { mockPatients } from '@/data/mockPatients';
 import { Patient } from '@/types/patient';
-import { Calendar, Settings } from 'lucide-react';
+import { Calendar, Settings, Loader2, LogOut } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
+import { usePatients } from '@/hooks/usePatients';
+import { Button } from '@/components/ui/button';
 
 const Index = () => {
   const [activeView, setActiveView] = useState('dashboard');
-  const [patients, setPatients] = useState<Patient[]>(mockPatients);
+  const navigate = useNavigate();
+  const { user, loading: authLoading, signOut } = useAuth();
+  const { patients, loading: patientsLoading, addPatient, updatePatient } = usePatients(user?.id);
 
-  const handleAddPatient = (data: Partial<Patient>) => {
-    const newPatient: Patient = {
-      ...data,
-      id: crypto.randomUUID(),
-      completedSessions: data.completedSessions || 0,
-      treatmentStatus: data.treatmentStatus || 'novo',
-      financialStatus: data.financialStatus || 'pendente',
-      sessionHistory: data.sessionHistory || [],
-      sessions: data.sessions || [],
-      createdAt: new Date().toISOString().split('T')[0],
-      updatedAt: new Date().toISOString().split('T')[0],
-    } as Patient;
-    
-    setPatients(prev => [newPatient, ...prev]);
+  useEffect(() => {
+    if (!authLoading && !user) {
+      navigate('/auth');
+    }
+  }, [user, authLoading, navigate]);
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/auth');
   };
 
-  const handleUpdatePatient = (data: Partial<Patient>) => {
-    setPatients(prev => prev.map(p => 
-      p.id === data.id 
-        ? { ...p, ...data, updatedAt: new Date().toISOString().split('T')[0] }
-        : p
-    ));
-  };
+  if (authLoading || (user && patientsLoading)) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
+          <p className="text-muted-foreground">Carregando...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return null;
+  }
 
   const renderContent = () => {
     switch (activeView) {
       case 'dashboard':
         return (
           <>
-            <Header title="Dashboard" subtitle="Bem-vindo ao FisioGestão" />
+            <Header 
+              title="Dashboard" 
+              subtitle="Bem-vindo ao FisioGestão"
+              rightContent={
+                <Button variant="ghost" size="sm" onClick={handleSignOut}>
+                  <LogOut className="h-4 w-4" />
+                  Sair
+                </Button>
+              }
+            />
             <Dashboard patients={patients} />
           </>
         );
@@ -48,8 +64,8 @@ const Index = () => {
         return (
           <PatientList 
             patients={patients} 
-            onAddPatient={handleAddPatient}
-            onUpdatePatient={handleUpdatePatient}
+            onAddPatient={addPatient}
+            onUpdatePatient={updatePatient}
           />
         );
       case 'calendar':
