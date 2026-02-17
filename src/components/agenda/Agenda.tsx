@@ -1,11 +1,12 @@
-import { useState, useMemo } from 'react';
-import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, addWeeks, subWeeks, parseISO, isToday } from 'date-fns';
+import { useState, useMemo, useEffect } from 'react';
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, addWeeks, subWeeks, parseISO, isToday, addDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Patient, SessionEntry } from '@/types/patient';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Header } from '@/components/layout/Header';
+import { Input } from '@/components/ui/input';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, List, Plus, Clock, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AgendaEventModal } from './AgendaEventModal';
@@ -23,12 +24,55 @@ interface AppointmentEvent {
   session: SessionEntry;
 }
 
+const GOOGLE_CALENDAR_EMAIL_KEY = 'google-calendar-email';
+
+const buildGoogleCalendarUrl = ({
+  patientName,
+  date,
+  notes,
+  calendarEmail,
+}: {
+  patientName: string;
+  date: string;
+  notes?: string;
+  calendarEmail?: string;
+}) => {
+  const start = parseISO(date);
+  const end = addDays(start, 1);
+
+  const params = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: `Consulta - ${patientName}`,
+    dates: `${format(start, 'yyyyMMdd')}/${format(end, 'yyyyMMdd')}`,
+    details: notes || `Consulta com ${patientName}`,
+  });
+
+  if (calendarEmail) {
+    params.set('src', calendarEmail);
+  }
+
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+};
+
 export function Agenda({ patients, onUpdatePatient }: AgendaProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<ViewMode>('week');
   const [selectedEvent, setSelectedEvent] = useState<AppointmentEvent | null>(null);
   const [showNewAppointment, setShowNewAppointment] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [googleCalendarEmail, setGoogleCalendarEmail] = useState('');
+
+  useEffect(() => {
+    const savedEmail = localStorage.getItem(GOOGLE_CALENDAR_EMAIL_KEY);
+    if (savedEmail) {
+      setGoogleCalendarEmail(savedEmail);
+    }
+  }, []);
+
+  const handleGoogleEmailChange = (value: string) => {
+    setGoogleCalendarEmail(value);
+    localStorage.setItem(GOOGLE_CALENDAR_EMAIL_KEY, value);
+  };
 
   // Flatten all sessions from all patients into events
   const events = useMemo(() => {
@@ -93,6 +137,16 @@ export function Agenda({ patients, onUpdatePatient }: AgendaProps) {
     setShowNewAppointment(true);
   };
 
+  const openGoogleCalendar = (patient: Patient, date: string, notes?: string) => {
+    const url = buildGoogleCalendarUrl({
+      patientName: patient.name,
+      date,
+      notes,
+      calendarEmail: googleCalendarEmail || undefined,
+    });
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
   const handleNewAppointment = (patientId: string, date: string, notes?: string) => {
     const patient = patients.find(p => p.id === patientId);
     if (!patient) return;
@@ -109,6 +163,8 @@ export function Agenda({ patients, onUpdatePatient }: AgendaProps) {
       sessions: [...patient.sessions, newSession],
       completedSessions: patient.completedSessions + 1,
     });
+
+    openGoogleCalendar(patient, date, notes);
   };
 
   const headerTitle = viewMode === 'week'
@@ -137,7 +193,13 @@ export function Agenda({ patients, onUpdatePatient }: AgendaProps) {
             </span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            <Input
+              value={googleCalendarEmail}
+              onChange={(e) => handleGoogleEmailChange(e.target.value)}
+              placeholder="conta@gmail.com (Google Agenda)"
+              className="w-64 bg-card"
+            />
             <div className="flex rounded-lg border border-border bg-card p-1">
               <Button
                 variant={viewMode === 'week' ? 'default' : 'ghost'}
@@ -188,6 +250,7 @@ export function Agenda({ patients, onUpdatePatient }: AgendaProps) {
           event={selectedEvent}
           onClose={() => setSelectedEvent(null)}
           onUpdatePatient={onUpdatePatient}
+          onAddToGoogleCalendar={openGoogleCalendar}
         />
       )}
 
