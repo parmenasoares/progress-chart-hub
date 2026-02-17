@@ -1,15 +1,16 @@
-import { useState, useMemo } from 'react';
-import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, addWeeks, subWeeks, parseISO, isToday } from 'date-fns';
+import { useState, useMemo, useEffect } from 'react';
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, addWeeks, subWeeks, parseISO, isToday, addDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Patient, SessionEntry } from '@/types/patient';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Header } from '@/components/layout/Header';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, List, Plus, Clock, User } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, List, Plus, User, Link as LinkIcon, Unplug } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AgendaEventModal } from './AgendaEventModal';
 import { NewAppointmentModal } from './NewAppointmentModal';
+import { useToast } from '@/hooks/use-toast';
 
 interface AgendaProps {
   patients: Patient[];
@@ -23,12 +24,220 @@ interface AppointmentEvent {
   session: SessionEntry;
 }
 
+interface GoogleTokenResponse {
+  access_token: string;
+  expires_in: number;
+}
+
+const GOOGLE_CLIENT_SCRIPT_SRC = 'https://accounts.google.com/gsi/client';
+const GOOGLE_TOKEN_KEY = 'google-calendar-access-token';
+const GOOGLE_TOKEN_EXPIRY_KEY = 'google-calendar-access-token-expiry';
+const GOOGLE_CALENDAR_EMAIL_KEY = 'google-calendar-email';
+const GOOGLE_SCOPES = 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/userinfo.email';
+
+const buildGoogleCalendarEventBody = ({
+  patientName,
+  date,
+  notes,
+}: {
+  patientName: string;
+  date: string;
+  notes?: string;
+}) => {
+  const start = parseISO(date);
+  const end = addDays(start, 1);
+
+  return {
+    summary: `Consulta - ${patientName}`,
+    description: notes || `Consulta com ${patientName}`,
+    start: { date: format(start, 'yyyy-MM-dd') },
+    end: { date: format(end, 'yyyy-MM-dd') },
+  };
+};
+
+const loadGoogleIdentityScript = async () => {
+  if (window.google?.accounts?.oauth2) {
+    return;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const existing = document.querySelector<HTMLScriptElement>(`script[src="${GOOGLE_CLIENT_SCRIPT_SRC}"]`);
+
+    if (existing) {
+      existing.addEventListener('load', () => resolve(), { once: true });
+      existing.addEventListener('error', () => reject(new Error('Não foi possível carregar o script do Google.')), { once: true });
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = GOOGLE_CLIENT_SCRIPT_SRC;
+    script.async = true;
+    script.defer = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Não foi possível carregar o script do Google.'));
+    document.head.appendChild(script);
+  });
+};
+
 export function Agenda({ patients, onUpdatePatient }: AgendaProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<ViewMode>('week');
   const [selectedEvent, setSelectedEvent] = useState<AppointmentEvent | null>(null);
   const [showNewAppointment, setShowNewAppointment] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [googleEmail, setGoogleEmail] = useState('');
+  const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(null);
+  const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    const savedToken = localStorage.getItem(GOOGLE_TOKEN_KEY);
+    const savedExpiry = localStorage.getItem(GOOGLE_TOKEN_EXPIRY_KEY);
+    const savedEmail = localStorage.getItem(GOOGLE_CALENDAR_EMAIL_KEY);
+
+    if (savedEmail) {
+      setGoogleEmail(savedEmail);
+    }
+
+    if (savedToken && savedExpiry && Number(savedExpiry) > Date.now()) {
+      setGoogleAccessToken(savedToken);
+    }
+  }, []);
+
+  const handleGoogleDisconnect = () => {
+    setGoogleAccessToken(null);
+    setGoogleEmail('');
+    localStorage.removeItem(GOOGLE_TOKEN_KEY);
+    localStorage.removeItem(GOOGLE_TOKEN_EXPIRY_KEY);
+    localStorage.removeItem(GOOGLE_CALENDAR_EMAIL_KEY);
+
+    toast({
+      title: 'Google Agenda desconectada',
+      description: 'A integração com Google foi removida deste navegador.',
+    });
+  };
+
+  const connectGoogleCalendar = async () => {
+    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+
+    if (!clientId) {
+      toast({
+        title: 'Configuração pendente',
+        description: 'Defina VITE_GOOGLE_CLIENT_ID para conectar a conta Google.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      setIsConnectingGoogle(true);
+      await loadGoogleIdentityScript();
+
+      const tokenResponse = await new Promise<GoogleTokenResponse>((resolve, reject) => {
+        const tokenClient = window.google.accounts.oauth2.initTokenClient({
+          client_id: clientId,
+          scope: GOOGLE_SCOPES,
+          callback: (response) => {
+            if (!response.access_token) {
+              reject(new Error('Token de acesso inválido.'));
+              return;
+            }
+            resolve({
+              access_token: response.access_token,
+              expires_in: response.expires_in || 3600,
+            });
+          },
+          error_callback: () => reject(new Error('Falha na autenticação com Google.')),
+        });
+
+        tokenClient.requestAccessToken({ prompt: 'consent' });
+      });
+
+      const expiresAt = Date.now() + tokenResponse.expires_in * 1000;
+      localStorage.setItem(GOOGLE_TOKEN_KEY, tokenResponse.access_token);
+      localStorage.setItem(GOOGLE_TOKEN_EXPIRY_KEY, String(expiresAt));
+      setGoogleAccessToken(tokenResponse.access_token);
+
+      const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: {
+          Authorization: `Bearer ${tokenResponse.access_token}`,
+        },
+      });
+
+      if (userInfoResponse.ok) {
+        const userInfo = await userInfoResponse.json();
+        if (userInfo.email) {
+          setGoogleEmail(userInfo.email);
+          localStorage.setItem(GOOGLE_CALENDAR_EMAIL_KEY, userInfo.email);
+        }
+      }
+
+      toast({
+        title: 'Google Agenda conectada',
+        description: 'Sua conta Google foi conectada com sucesso.',
+      });
+    } catch (error) {
+      console.error(error);
+      toast({
+        title: 'Erro ao conectar Google',
+        description: 'Não foi possível conectar sua conta Google Agenda.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsConnectingGoogle(false);
+    }
+  };
+
+  const createGoogleCalendarEvent = async (patient: Patient, date: string, notes?: string) => {
+    if (!googleAccessToken) {
+      toast({
+        title: 'Conecte sua conta Google',
+        description: 'Clique em "Conectar Google" para sincronizar eventos.',
+      });
+      return;
+    }
+
+    try {
+      const response = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${googleAccessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(buildGoogleCalendarEventBody({
+          patientName: patient.name,
+          date,
+          notes,
+        })),
+      });
+
+      if (response.status === 401) {
+        handleGoogleDisconnect();
+        toast({
+          title: 'Sessão Google expirada',
+          description: 'Conecte novamente sua conta para continuar sincronizando.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error('Erro ao criar evento no Google Calendar.');
+      }
+
+      toast({
+        title: 'Evento sincronizado',
+        description: `Consulta de ${patient.name} enviada para Google Agenda.`,
+      });
+    } catch (error) {
+      console.error(error);
+      toast({
+        title: 'Falha na sincronização',
+        description: 'Não foi possível criar o evento no Google Agenda.',
+        variant: 'destructive',
+      });
+    }
+  };
 
   // Flatten all sessions from all patients into events
   const events = useMemo(() => {
@@ -55,7 +264,7 @@ export function Agenda({ patients, onUpdatePatient }: AgendaProps) {
     };
   }, [currentDate, viewMode]);
 
-  const days = useMemo(() => 
+  const days = useMemo(() =>
     eachDayOfInterval({ start: dateRange.start, end: dateRange.end }),
     [dateRange]
   );
@@ -109,6 +318,8 @@ export function Agenda({ patients, onUpdatePatient }: AgendaProps) {
       sessions: [...patient.sessions, newSession],
       completedSessions: patient.completedSessions + 1,
     });
+
+    void createGoogleCalendarEvent(patient, date, notes);
   };
 
   const headerTitle = viewMode === 'week'
@@ -137,7 +348,22 @@ export function Agenda({ patients, onUpdatePatient }: AgendaProps) {
             </span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            {googleAccessToken ? (
+              <>
+                <Badge variant="success">Google conectado{googleEmail ? `: ${googleEmail}` : ''}</Badge>
+                <Button variant="outline" size="sm" onClick={handleGoogleDisconnect}>
+                  <Unplug className="h-4 w-4" />
+                  Desconectar
+                </Button>
+              </>
+            ) : (
+              <Button variant="outline" size="sm" onClick={connectGoogleCalendar} disabled={isConnectingGoogle}>
+                <LinkIcon className="h-4 w-4" />
+                {isConnectingGoogle ? 'Conectando...' : 'Conectar Google'}
+              </Button>
+            )}
+
             <div className="flex rounded-lg border border-border bg-card p-1">
               <Button
                 variant={viewMode === 'week' ? 'default' : 'ghost'}
@@ -165,17 +391,17 @@ export function Agenda({ patients, onUpdatePatient }: AgendaProps) {
 
         {/* Calendar Grid */}
         {viewMode === 'week' ? (
-          <WeekView 
-            days={days} 
-            getEventsForDay={getEventsForDay} 
+          <WeekView
+            days={days}
+            getEventsForDay={getEventsForDay}
             onEventClick={setSelectedEvent}
             onDayClick={handleDayClick}
           />
         ) : (
-          <MonthView 
-            days={days} 
+          <MonthView
+            days={days}
             currentDate={currentDate}
-            getEventsForDay={getEventsForDay} 
+            getEventsForDay={getEventsForDay}
             onEventClick={setSelectedEvent}
             onDayClick={handleDayClick}
           />
@@ -188,6 +414,7 @@ export function Agenda({ patients, onUpdatePatient }: AgendaProps) {
           event={selectedEvent}
           onClose={() => setSelectedEvent(null)}
           onUpdatePatient={onUpdatePatient}
+          onAddToGoogleCalendar={createGoogleCalendarEvent}
         />
       )}
 
@@ -223,8 +450,8 @@ function WeekView({ days, getEventsForDay, onEventClick, onDayClick }: WeekViewP
         const isCurrentDay = isToday(day);
 
         return (
-          <Card 
-            key={day.toISOString()} 
+          <Card
+            key={day.toISOString()}
             className={cn(
               "min-h-[200px] cursor-pointer transition-colors hover:border-primary/50",
               isCurrentDay && "border-primary bg-primary/5"
@@ -255,7 +482,7 @@ function WeekView({ days, getEventsForDay, onEventClick, onDayClick }: WeekViewP
                     onClick={() => onEventClick(event)}
                     className={cn(
                       "p-2 rounded-md cursor-pointer transition-colors text-xs",
-                      event.session.paid 
+                      event.session.paid
                         ? "bg-success/10 border border-success/30 hover:bg-success/20"
                         : "bg-warning/10 border border-warning/30 hover:bg-warning/20"
                     )}
