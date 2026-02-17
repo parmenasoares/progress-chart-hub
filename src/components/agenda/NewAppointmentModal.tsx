@@ -18,9 +18,10 @@ interface NewAppointmentModalProps {
   selectedDate: Date | null;
   onClose: () => void;
   onSave: (patientId: string, date: string, notes?: string) => void;
+  onOpenCalendly?: (patientId: string) => void;
 }
 
-export function NewAppointmentModal({ patients, selectedDate, onClose, onSave }: NewAppointmentModalProps) {
+export function NewAppointmentModal({ patients, selectedDate, onClose, onSave, onOpenCalendly }: NewAppointmentModalProps) {
   const [patientId, setPatientId] = useState('');
   const [date, setDate] = useState<Date | undefined>(selectedDate || undefined);
   const [notes, setNotes] = useState('');
@@ -121,10 +122,20 @@ export function NewAppointmentModal({ patients, selectedDate, onClose, onSave }:
           </div>
 
           {/* Actions */}
-          <div className="flex justify-end gap-2 pt-4">
+          <div className="flex flex-wrap justify-end gap-2 pt-4">
             <Button type="button" variant="outline" onClick={onClose}>
               Cancelar
             </Button>
+            {onOpenCalendly && (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!patientId}
+                onClick={() => onOpenCalendly(patientId)}
+              >
+                Abrir Calendly (1 clique)
+              </Button>
+            )}
             <Button type="submit" disabled={!patientId || !date}>
               <Plus className="h-4 w-4" />
               Agendar Consulta
