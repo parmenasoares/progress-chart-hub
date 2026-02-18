@@ -1,16 +1,14 @@
-import { useState, useEffect, useRef, ChangeEvent } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Dashboard } from '@/components/dashboard/Dashboard';
 import { PatientList } from '@/components/patients/PatientList';
 import { Agenda } from '@/components/agenda/Agenda';
 import { Header } from '@/components/layout/Header';
-import { Patient } from '@/types/patient';
 import { Settings, Loader2, LogOut } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { usePatients } from '@/hooks/usePatients';
 import { Button } from '@/components/ui/button';
-import Papa from 'papaparse';
 
 const Index = () => {
   const [activeView, setActiveView] = useState('dashboard');
@@ -22,28 +20,6 @@ const Index = () => {
     addPatient,
     updatePatient,
   } = usePatients(user?.id);
-
-  // Referência para o input de arquivo
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-
-  // Manipulador para importar dados do CSV
-  const handleImportCSV = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: (results) => {
-        const importedPatients = results.data as Patient[];
-        importedPatients.forEach((p) => {
-          addPatient(p);
-        });
-      },
-      error: (error) => {
-        console.error(error);
-      },
-    });
-  };
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -80,30 +56,14 @@ const Index = () => {
               title="Dashboard"
               subtitle="Bem-vindo ao FisioGestão"
               rightContent={
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    Importar CSV
-                  </Button>
-                  <input
-                    type="file"
-                    accept=".csv"
-                    ref={fileInputRef}
-                    onChange={handleImportCSV}
-                    style={{ display: 'none' }}
-                  />
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleSignOut}
-                  >
-                    <LogOut className="h-4 w-4" />
-                    Sair
-                  </Button>
-                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleSignOut}
+                >
+                  <LogOut className="h-4 w-4" />
+                  Sair
+                </Button>
               }
             />
             <Dashboard patients={patients} />
@@ -122,6 +82,7 @@ const Index = () => {
           <Agenda
             patients={patients}
             onUpdatePatient={updatePatient}
+            userId={user?.id}
           />
         );
       case 'settings':
@@ -147,7 +108,7 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background">
       <Sidebar activeView={activeView} onViewChange={setActiveView} />
-      <main className="ml-64 min-h-screen">
+      <main className="min-h-screen pb-16 md:ml-64 md:pb-0">
         {renderContent()}
       </main>
     </div>
