@@ -7,8 +7,37 @@ import { useToast } from '@/hooks/use-toast';
 type DbPatient = Tables<'patients'>;
 type DbSession = Tables<'sessions'>;
 
+
+const PATIENT_SESSION_CHUNK_SIZE = 500;
+const LARGE_DATASET_PATIENT_THRESHOLD = 2000;
+
+const chunkArray = <T,>(array: T[], chunkSize: number) => {
+  const chunks: T[][] = [];
+  for (let i = 0; i < array.length; i += chunkSize) {
+    chunks.push(array.slice(i, i + chunkSize));
+  }
+  return chunks;
+};
+
 // Convert database patient to frontend Patient type
-function dbToPatient(dbPatient: DbPatient, sessions: DbSession[]): Patient {
+function dbToPatient(dbPatient: DbPatient, sessions: DbSession[] = []): Patient {
+  const fallbackSessionsFromHistory: SessionEntry[] = (dbPatient.session_history ?? []).map((date, index) => ({
+    id: `history-${dbPatient.id}-${index}`,
+    date,
+    notes: 'Sessão importada do histórico.',
+    paid: false,
+  }));
+
+  const normalizedSessions = sessions.length > 0
+    ? sessions.map(s => ({
+      id: s.id,
+      date: s.date,
+      notes: s.notes ?? undefined,
+      evolution: s.evolution ?? undefined,
+      paid: s.paid,
+    }))
+    : fallbackSessionsFromHistory;
+
   return {
     id: dbPatient.id,
     name: dbPatient.name,
@@ -30,13 +59,7 @@ function dbToPatient(dbPatient: DbPatient, sessions: DbSession[]): Patient {
     anamnesisLink: dbPatient.anamnesis_link ?? undefined,
     lastEvolutionDate: dbPatient.last_evolution_date ?? undefined,
     sessionHistory: dbPatient.session_history ?? [],
-    sessions: sessions.map(s => ({
-      id: s.id,
-      date: s.date,
-      notes: s.notes ?? undefined,
-      evolution: s.evolution ?? undefined,
-      paid: s.paid,
-    })),
+    sessions: normalizedSessions,
     quickContext: dbPatient.quick_context ?? undefined,
     createdAt: dbPatient.created_at,
     updatedAt: dbPatient.updated_at,
@@ -49,7 +72,12 @@ export function usePatients(userId: string | undefined) {
   const { toast } = useToast();
 
   const fetchPatients = useCallback(async () => {
-    if (!userId) return;
+    if (!userId) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
 
     try {
       const { data: patientsData, error: patientsError } = await supabase
@@ -65,25 +93,46 @@ export function usePatients(userId: string | undefined) {
         return;
       }
 
-      const { data: sessionsData, error: sessionsError } = await supabase
-        .from('sessions')
-        .select('*')
-        .in('patient_id', patientsData.map(p => p.id))
-        .order('date', { ascending: false });
+      let convertedPatients: Patient[] = [];
 
-      if (sessionsError) throw sessionsError;
+      if (patientsData.length > LARGE_DATASET_PATIENT_THRESHOLD) {
+        convertedPatients = patientsData.map((p) => dbToPatient(p));
 
-      const sessionsByPatient = (sessionsData || []).reduce((acc, session) => {
-        if (!acc[session.patient_id]) {
-          acc[session.patient_id] = [];
+        toast({
+          title: 'Base grande detectada',
+          description: 'Carregamos a lista em modo otimizado para evitar travamento.',
+        });
+      } else {
+        const patientIds = patientsData.map((p) => p.id);
+        const patientIdChunks = chunkArray(patientIds, PATIENT_SESSION_CHUNK_SIZE);
+        const allSessions: DbSession[] = [];
+
+        for (const idsChunk of patientIdChunks) {
+          const { data: chunkSessions, error: chunkError } = await supabase
+            .from('sessions')
+            .select('*')
+            .in('patient_id', idsChunk)
+            .order('date', { ascending: false });
+
+          if (chunkError) throw chunkError;
+
+          if (chunkSessions && chunkSessions.length > 0) {
+            allSessions.push(...chunkSessions);
+          }
         }
-        acc[session.patient_id].push(session);
-        return acc;
-      }, {} as Record<string, DbSession[]>);
 
-      const convertedPatients = patientsData.map(p => 
-        dbToPatient(p, sessionsByPatient[p.id] || [])
-      );
+        const sessionsByPatient = allSessions.reduce((acc, session) => {
+          if (!acc[session.patient_id]) {
+            acc[session.patient_id] = [];
+          }
+          acc[session.patient_id].push(session);
+          return acc;
+        }, {} as Record<string, DbSession[]>);
+
+        convertedPatients = patientsData.map((p) =>
+          dbToPatient(p, sessionsByPatient[p.id] || [])
+        );
+      }
 
       setPatients(convertedPatients);
     } catch (error) {
