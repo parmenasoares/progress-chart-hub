@@ -7,6 +7,17 @@ import { useToast } from '@/hooks/use-toast';
 type DbPatient = Tables<'patients'>;
 type DbSession = Tables<'sessions'>;
 
+
+const PATIENT_SESSION_CHUNK_SIZE = 500;
+
+const chunkArray = <T,>(array: T[], chunkSize: number) => {
+  const chunks: T[][] = [];
+  for (let i = 0; i < array.length; i += chunkSize) {
+    chunks.push(array.slice(i, i + chunkSize));
+  }
+  return chunks;
+};
+
 // Convert database patient to frontend Patient type
 function dbToPatient(dbPatient: DbPatient, sessions: DbSession[]): Patient {
   return {
@@ -65,15 +76,25 @@ export function usePatients(userId: string | undefined) {
         return;
       }
 
-      const { data: sessionsData, error: sessionsError } = await supabase
-        .from('sessions')
-        .select('*')
-        .in('patient_id', patientsData.map(p => p.id))
-        .order('date', { ascending: false });
+      const patientIds = patientsData.map((p) => p.id);
+      const patientIdChunks = chunkArray(patientIds, PATIENT_SESSION_CHUNK_SIZE);
+      const allSessions: DbSession[] = [];
 
-      if (sessionsError) throw sessionsError;
+      for (const idsChunk of patientIdChunks) {
+        const { data: chunkSessions, error: chunkError } = await supabase
+          .from('sessions')
+          .select('*')
+          .in('patient_id', idsChunk)
+          .order('date', { ascending: false });
 
-      const sessionsByPatient = (sessionsData || []).reduce((acc, session) => {
+        if (chunkError) throw chunkError;
+
+        if (chunkSessions && chunkSessions.length > 0) {
+          allSessions.push(...chunkSessions);
+        }
+      }
+
+      const sessionsByPatient = allSessions.reduce((acc, session) => {
         if (!acc[session.patient_id]) {
           acc[session.patient_id] = [];
         }
