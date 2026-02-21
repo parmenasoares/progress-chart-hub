@@ -7,12 +7,56 @@ import { useToast } from '@/hooks/use-toast';
 type DbPatient = Tables<'patients'>;
 type DbSession = Tables<'sessions'>;
 
+
+const PATIENT_SESSION_CHUNK_SIZE = 500;
+const PATIENT_FETCH_PAGE_SIZE = 1000;
+const LARGE_DATASET_PATIENT_THRESHOLD = 2000;
+
+const chunkArray = <T,>(array: T[], chunkSize: number) => {
+  const chunks: T[][] = [];
+  for (let i = 0; i < array.length; i += chunkSize) {
+    chunks.push(array.slice(i, i + chunkSize));
+  }
+  return chunks;
+};
+
+const removeCityFromQuickContext = (value?: string) => {
+  if (!value) return '';
+
+  return value
+    .split('|')
+    .map((item) => item.trim())
+    .filter((item) => item && !/^Cidade\s*:/i.test(item))
+    .join(' | ');
+};
+
 // Convert database patient to frontend Patient type
-function dbToPatient(dbPatient: DbPatient, sessions: DbSession[]): Patient {
+function dbToPatient(dbPatient: DbPatient, sessions: DbSession[] = []): Patient {
+  const context = dbPatient.quick_context ?? '';
+  const cityFromContext = context.match(/Cidade:\s*([^|]+)/i)?.[1]?.trim();
+
+  const fallbackSessionsFromHistory: SessionEntry[] = (dbPatient.session_history ?? []).map((date, index) => ({
+    id: `history-${dbPatient.id}-${index}`,
+    date,
+    notes: 'Sessão importada do histórico.',
+    paid: false,
+  }));
+
+  const normalizedSessions = sessions.length > 0
+    ? sessions.map(s => ({
+      id: s.id,
+      date: s.date,
+      notes: s.notes ?? undefined,
+      evolution: s.evolution ?? undefined,
+      paid: s.paid,
+    }))
+    : fallbackSessionsFromHistory;
+
   return {
     id: dbPatient.id,
     name: dbPatient.name,
     phone: dbPatient.phone,
+    city: cityFromContext || undefined,
     email: dbPatient.email ?? undefined,
     birthDate: dbPatient.birth_date ?? undefined,
     leadSource: dbPatient.lead_source,
@@ -30,13 +74,7 @@ function dbToPatient(dbPatient: DbPatient, sessions: DbSession[]): Patient {
     anamnesisLink: dbPatient.anamnesis_link ?? undefined,
     lastEvolutionDate: dbPatient.last_evolution_date ?? undefined,
     sessionHistory: dbPatient.session_history ?? [],
-    sessions: sessions.map(s => ({
-      id: s.id,
-      date: s.date,
-      notes: s.notes ?? undefined,
-      evolution: s.evolution ?? undefined,
-      paid: s.paid,
-    })),
+    sessions: normalizedSessions,
     quickContext: dbPatient.quick_context ?? undefined,
     createdAt: dbPatient.created_at,
     updatedAt: dbPatient.updated_at,
@@ -46,47 +84,114 @@ function dbToPatient(dbPatient: DbPatient, sessions: DbSession[]): Patient {
 export function usePatients(userId: string | undefined) {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [loadingStatus, setLoadingStatus] = useState('Iniciando carregamento...');
   const { toast } = useToast();
 
   const fetchPatients = useCallback(async () => {
-    if (!userId) return;
+    if (!userId) {
+      setLoadingStatus('Usuário não autenticado.');
+      setLoadingProgress(100);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setLoadingProgress(5);
+    setLoadingStatus('Carregando pacientes...');
+    let hasError = false;
 
     try {
-      const { data: patientsData, error: patientsError } = await supabase
-        .from('patients')
-        .select('*')
-        .order('updated_at', { ascending: false });
+      const allPatients: DbPatient[] = [];
+      let currentOffset = 0;
+      let hasMorePatients = true;
 
-      if (patientsError) throw patientsError;
+      while (hasMorePatients) {
+        const { data: pageData, error: pageError } = await supabase
+          .from('patients')
+          .select('*')
+          .order('updated_at', { ascending: false })
+          .range(currentOffset, currentOffset + PATIENT_FETCH_PAGE_SIZE - 1);
 
-      if (!patientsData || patientsData.length === 0) {
+        if (pageError) throw pageError;
+
+        const currentPage = pageData || [];
+        allPatients.push(...currentPage);
+
+        currentOffset += currentPage.length;
+        hasMorePatients = currentPage.length === PATIENT_FETCH_PAGE_SIZE;
+
+        setLoadingStatus(`Carregando pacientes... ${allPatients.length} registros`);
+        setLoadingProgress(hasMorePatients ? 10 : 35);
+      }
+
+      if (allPatients.length === 0) {
         setPatients([]);
+        setLoadingStatus('Nenhum paciente encontrado.');
+        setLoadingProgress(100);
         setLoading(false);
         return;
       }
 
-      const { data: sessionsData, error: sessionsError } = await supabase
-        .from('sessions')
-        .select('*')
-        .in('patient_id', patientsData.map(p => p.id))
-        .order('date', { ascending: false });
+      let convertedPatients: Patient[] = [];
 
-      if (sessionsError) throw sessionsError;
+      if (allPatients.length > LARGE_DATASET_PATIENT_THRESHOLD) {
+        setLoadingStatus('Base grande detectada, aplicando modo otimizado...');
+        setLoadingProgress(60);
 
-      const sessionsByPatient = (sessionsData || []).reduce((acc, session) => {
-        if (!acc[session.patient_id]) {
-          acc[session.patient_id] = [];
+        convertedPatients = allPatients.map((p) => dbToPatient(p));
+
+        toast({
+          title: 'Base grande detectada',
+          description: 'Carregamos a lista em modo otimizado para evitar travamento.',
+        });
+      } else {
+        setLoadingStatus('Carregando sessões dos pacientes...');
+        setLoadingProgress(45);
+
+        const patientIds = allPatients.map((p) => p.id);
+        const patientIdChunks = chunkArray(patientIds, PATIENT_SESSION_CHUNK_SIZE);
+        const allSessions: DbSession[] = [];
+
+        const totalChunks = patientIdChunks.length || 1;
+
+        for (let chunkIndex = 0; chunkIndex < patientIdChunks.length; chunkIndex += 1) {
+          const idsChunk = patientIdChunks[chunkIndex];
+          const { data: chunkSessions, error: chunkError } = await supabase
+            .from('sessions')
+            .select('*')
+            .in('patient_id', idsChunk)
+            .order('date', { ascending: false });
+
+          if (chunkError) throw chunkError;
+
+          if (chunkSessions && chunkSessions.length > 0) {
+            allSessions.push(...chunkSessions);
+          }
+
+          const chunkProgress = 45 + Math.round(((chunkIndex + 1) / totalChunks) * 45);
+          setLoadingProgress(Math.min(chunkProgress, 92));
+          setLoadingStatus(`Carregando sessões... ${chunkIndex + 1}/${totalChunks}`);
         }
-        acc[session.patient_id].push(session);
-        return acc;
-      }, {} as Record<string, DbSession[]>);
 
-      const convertedPatients = patientsData.map(p => 
-        dbToPatient(p, sessionsByPatient[p.id] || [])
-      );
+        const sessionsByPatient = allSessions.reduce((acc, session) => {
+          if (!acc[session.patient_id]) {
+            acc[session.patient_id] = [];
+          }
+          acc[session.patient_id].push(session);
+          return acc;
+        }, {} as Record<string, DbSession[]>);
 
+        convertedPatients = allPatients.map((p) =>
+          dbToPatient(p, sessionsByPatient[p.id] || [])
+        );
+      }
+
+      setLoadingStatus('Finalizando preload dos dados...');
+      setLoadingProgress(98);
       setPatients(convertedPatients);
     } catch (error) {
+      hasError = true;
       console.error('Error fetching patients:', error);
       toast({
         title: 'Erro ao carregar pacientes',
@@ -94,6 +199,8 @@ export function usePatients(userId: string | undefined) {
         variant: 'destructive',
       });
     } finally {
+      setLoadingProgress(100);
+      setLoadingStatus(hasError ? 'Erro ao carregar dados.' : 'Dados carregados com sucesso.');
       setLoading(false);
     }
   }, [userId, toast]);
@@ -106,6 +213,12 @@ export function usePatients(userId: string | undefined) {
     if (!userId) return;
 
     try {
+      const quickContextWithoutCity = removeCityFromQuickContext(data.quickContext);
+      const normalizedQuickContext = [
+        data.city ? `Cidade: ${data.city}` : null,
+        quickContextWithoutCity || null,
+      ].filter(Boolean).join(' | ');
+
       const insertData: TablesInsert<'patients'> = {
         user_id: userId,
         name: data.name!,
@@ -127,7 +240,7 @@ export function usePatients(userId: string | undefined) {
         anamnesis_link: data.anamnesisLink || null,
         last_evolution_date: data.lastEvolutionDate || null,
         session_history: data.sessionHistory || [],
-        quick_context: data.quickContext || null,
+        quick_context: normalizedQuickContext || null,
       };
 
       const { data: newPatient, error } = await supabase
@@ -175,6 +288,12 @@ export function usePatients(userId: string | undefined) {
     if (!userId || !data.id) return;
 
     try {
+      const quickContextWithoutCity = removeCityFromQuickContext(data.quickContext);
+      const normalizedQuickContext = [
+        data.city ? `Cidade: ${data.city}` : null,
+        quickContextWithoutCity || null,
+      ].filter(Boolean).join(' | ');
+
       const updateData: TablesUpdate<'patients'> = {
         name: data.name,
         phone: data.phone,
@@ -195,7 +314,7 @@ export function usePatients(userId: string | undefined) {
         anamnesis_link: data.anamnesisLink || null,
         last_evolution_date: data.lastEvolutionDate || null,
         session_history: data.sessionHistory || [],
-        quick_context: data.quickContext || null,
+        quick_context: normalizedQuickContext || null,
       };
 
       const { error } = await supabase
@@ -274,6 +393,8 @@ export function usePatients(userId: string | undefined) {
   return {
     patients,
     loading,
+    loadingProgress,
+    loadingStatus,
     addPatient,
     updatePatient,
     deletePatient,

@@ -35,6 +35,7 @@ export function PatientForm({ patient, onSubmit, onClose }: PatientFormProps) {
   const [formData, setFormData] = useState<Partial<Patient>>({
     name: '',
     phone: '',
+    city: '',
     email: '',
     birthDate: '',
     leadSource: '',
@@ -133,6 +134,15 @@ export function PatientForm({ patient, onSubmit, onClose }: PatientFormProps) {
                   value={formData.email || ''}
                   onChange={(e) => updateField('email', e.target.value)}
                   placeholder="email@exemplo.com"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="city">Cidade</Label>
+                <Input
+                  id="city"
+                  value={formData.city || ''}
+                  onChange={(e) => updateField('city', e.target.value)}
+                  placeholder="Ex.: Belo Horizonte"
                 />
               </div>
               <div className="space-y-2">
