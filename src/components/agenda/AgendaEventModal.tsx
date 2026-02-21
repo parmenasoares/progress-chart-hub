@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
-import { Calendar, User, FileText, DollarSign, Clock, Trash2, Save } from 'lucide-react';
+import { Calendar, User, FileText, DollarSign, Clock, Trash2, Save, CalendarPlus } from 'lucide-react';
 
 interface AgendaEventModalProps {
   event: {
@@ -17,9 +17,10 @@ interface AgendaEventModalProps {
   };
   onClose: () => void;
   onUpdatePatient: (patient: Partial<Patient>) => void;
+  onAddToGoogleCalendar: (patient: Patient, date: string, notes?: string) => Promise<void> | void;
 }
 
-export function AgendaEventModal({ event, onClose, onUpdatePatient }: AgendaEventModalProps) {
+export function AgendaEventModal({ event, onClose, onUpdatePatient, onAddToGoogleCalendar }: AgendaEventModalProps) {
   const { patient, session } = event;
   const [notes, setNotes] = useState(session.notes || '');
   const [evolution, setEvolution] = useState(session.evolution || '');
@@ -157,6 +158,15 @@ export function AgendaEventModal({ event, onClose, onUpdatePatient }: AgendaEven
             </Button>
 
             <div className="flex gap-2">
+              {!isEditing && (
+                <Button
+                  variant="outline"
+                  onClick={() => onAddToGoogleCalendar(patient, session.date, notes)}
+                >
+                  <CalendarPlus className="h-4 w-4" />
+                  Google Agenda
+                </Button>
+              )}
               {isEditing ? (
                 <>
                   <Button variant="outline" onClick={() => setIsEditing(false)}>
