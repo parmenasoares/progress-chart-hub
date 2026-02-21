@@ -121,10 +121,11 @@ export function NewAppointmentModal({ patients, selectedDate, onClose, onSave }:
           </div>
 
           {/* Actions */}
-          <div className="flex justify-end gap-2 pt-4">
+          <div className="flex flex-wrap justify-end gap-2 pt-4">
             <Button type="button" variant="outline" onClick={onClose}>
               Cancelar
             </Button>
+
             <Button type="submit" disabled={!patientId || !date}>
               <Plus className="h-4 w-4" />
               Agendar Consulta
