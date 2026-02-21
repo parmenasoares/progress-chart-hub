@@ -1,16 +1,18 @@
-import { useState, useEffect, useRef, ChangeEvent } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Dashboard } from '@/components/dashboard/Dashboard';
 import { PatientList } from '@/components/patients/PatientList';
 import { Agenda } from '@/components/agenda/Agenda';
 import { Header } from '@/components/layout/Header';
-import { Patient } from '@/types/patient';
-import { Settings, Loader2, LogOut } from 'lucide-react';
+import { KanbanBoard } from '@/components/kanban/KanbanBoard';
+import { WhatsAppBroadcastPanel } from '@/components/whatsapp/WhatsAppBroadcastPanel';
+import { SettingsPanel } from '@/components/settings/SettingsPanel';
+import { Loader2, LogOut } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { usePatients } from '@/hooks/usePatients';
 import { Button } from '@/components/ui/button';
-import Papa from 'papaparse';
+import { Progress } from '@/components/ui/progress';
 
 const Index = () => {
   const [activeView, setActiveView] = useState('dashboard');
@@ -19,31 +21,11 @@ const Index = () => {
   const {
     patients,
     loading: patientsLoading,
+    loadingProgress,
+    loadingStatus,
     addPatient,
     updatePatient,
   } = usePatients(user?.id);
-
-  // Referência para o input de arquivo
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-
-  // Manipulador para importar dados do CSV
-  const handleImportCSV = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: (results) => {
-        const importedPatients = results.data as Patient[];
-        importedPatients.forEach((p) => {
-          addPatient(p);
-        });
-      },
-      error: (error) => {
-        console.error(error);
-      },
-    });
-  };
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -57,11 +39,28 @@ const Index = () => {
   };
 
   if (authLoading || (user && patientsLoading)) {
+    const safeProgress = Math.max(0, Math.min(100, Math.round(loadingProgress || 0)));
+
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
-          <p className="text-muted-foreground">Carregando...</p>
+      <div className="min-h-screen bg-background flex items-center justify-center px-4">
+        <div className="w-full max-w-xl space-y-5 rounded-xl border bg-card p-6 shadow-sm">
+          <div className="text-center space-y-2">
+            <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
+            <p className="font-medium text-foreground">Preparando seu CRM</p>
+            <p className="text-sm text-muted-foreground">{loadingStatus || 'Carregando dados...'}</p>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>Progresso de preload</span>
+              <span>{safeProgress}%</span>
+            </div>
+            <Progress value={safeProgress} className="h-2" />
+          </div>
+
+          <div className="rounded-md bg-muted/50 p-3 text-xs text-muted-foreground">
+            Status do projeto: importação CSV e sincronização Calendly ativas. O sistema está carregando sua base de pacientes e sessões em lotes para evitar travamentos.
+          </div>
         </div>
       </div>
     );
@@ -80,30 +79,14 @@ const Index = () => {
               title="Dashboard"
               subtitle="Bem-vindo ao FisioGestão"
               rightContent={
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    Importar CSV
-                  </Button>
-                  <input
-                    type="file"
-                    accept=".csv"
-                    ref={fileInputRef}
-                    onChange={handleImportCSV}
-                    style={{ display: 'none' }}
-                  />
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleSignOut}
-                  >
-                    <LogOut className="h-4 w-4" />
-                    Sair
-                  </Button>
-                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleSignOut}
+                >
+                  <LogOut className="h-4 w-4" />
+                  Sair
+                </Button>
               }
             />
             <Dashboard patients={patients} />
@@ -122,22 +105,29 @@ const Index = () => {
           <Agenda
             patients={patients}
             onUpdatePatient={updatePatient}
+            onAddPatient={addPatient}
+            userId={user?.id}
+          />
+        );
+
+      case 'kanban':
+        return (
+          <KanbanBoard
+            patients={patients}
+            onUpdatePatient={updatePatient}
+          />
+        );
+
+      case 'whatsapp':
+        return (
+          <WhatsAppBroadcastPanel
+            patients={patients}
+            userId={user?.id}
           />
         );
       case 'settings':
         return (
-          <>
-            <Header title="Configurações" subtitle="Personalize sua experiência" />
-            <div className="flex flex-col items-center justify-center h-96 text-center">
-              <Settings className="h-16 w-16 text-muted-foreground/50 mb-4" />
-              <h2 className="font-display text-xl font-semibold text-foreground">
-                Configurações em Desenvolvimento
-              </h2>
-              <p className="text-muted-foreground mt-2">
-                Esta funcionalidade estará disponível em breve.
-              </p>
-            </div>
-          </>
+          <SettingsPanel userId={user?.id} />
         );
       default:
         return null;
@@ -147,7 +137,7 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background">
       <Sidebar activeView={activeView} onViewChange={setActiveView} />
-      <main className="ml-64 min-h-screen">
+      <main className="min-h-screen pb-16 md:ml-64 md:pb-0">
         {renderContent()}
       </main>
     </div>
