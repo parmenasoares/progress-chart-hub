@@ -21,6 +21,7 @@ const Index = () => {
     loading: patientsLoading,
     addPatient,
     updatePatient,
+    clearPatients,
   } = usePatients(user?.id);
 
   // Referência para o input de arquivo
@@ -115,6 +116,7 @@ const Index = () => {
             patients={patients}
             onAddPatient={addPatient}
             onUpdatePatient={updatePatient}
+            onClearPatients={clearPatients}
           />
         );
       case 'calendar':
