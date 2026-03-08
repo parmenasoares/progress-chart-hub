@@ -5,7 +5,6 @@ import { PatientForm } from './PatientForm';
 import { PatientDetail } from './PatientDetail';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/button';
-
 import Papa from 'papaparse';
 import { Plus, Filter } from 'lucide-react';
 import {
@@ -21,9 +20,15 @@ interface PatientListProps {
   patients: Patient[];
   onAddPatient: (patient: Partial<Patient>) => void;
   onUpdatePatient: (patient: Partial<Patient>) => void;
+  onClearPatients: () => void;
 }
 
-export function PatientList({ patients, onAddPatient, onUpdatePatient }: PatientListProps) {
+export function PatientList({
+  patients,
+  onAddPatient,
+  onUpdatePatient,
+  onClearPatients,
+}: PatientListProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [showForm, setShowForm] = useState(false);
@@ -32,15 +37,15 @@ export function PatientList({ patients, onAddPatient, onUpdatePatient }: Patient
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const filteredPatients = patients.filter(patient => {
-      
-
-    
+  const filteredPatients = patients.filter((patient) => {
+    const query = searchQuery.toLowerCase();
+    const matchesSearch =
+      patient.name.toLowerCase().includes(query) ||
       patient.phone.includes(searchQuery) ||
-      (patient.email && patient.email.toLowerCase().includes(searchQuery.toLowerCase()));
-    
+      (patient.email && patient.email.toLowerCase().includes(query));
+
     const matchesStatus = statusFilter === 'all' || patient.treatmentStatus === statusFilter;
-    
+
     return matchesSearch && matchesStatus;
   });
 
@@ -60,7 +65,7 @@ export function PatientList({ patients, onAddPatient, onUpdatePatient }: Patient
     setShowForm(true);
   };
 
-    const handleExportCSV = () => {
+  const handleExportCSV = () => {
     const csv = Papa.unparse(patients);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -75,34 +80,40 @@ export function PatientList({ patients, onAddPatient, onUpdatePatient }: Patient
   const handleImportCSV = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    Papa.pars>(file, {
+    Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
-      complete: results => {
+      complete: (results) => {
         const importedPatients = results.data as Patient[];
-        importedPatients.forEach(p => {
+        importedPatients.forEach((p) => {
           onAddPatient(p);
         });
       },
-      error: err => {
+      error: (err) => {
         console.error(err);
       },
     });
   };
 
+  const handleClearPatients = () => {
+    if (patients.length === 0) return;
+
+    const confirmed = window.confirm('Tem certeza que deseja limpar toda a lista de pacientes?');
+    if (!confirmed) return;
+
+    onClearPatients();
+  };
+
   return (
     <div className="flex-1">
-      <Header 
-        title="Pacientes" 
+      <Header
+        title="Pacientes"
         subtitle={`${filteredPatients.length} paciente${filteredPatients.length !== 1 ? 's' : ''}`}
         searchValue={searchQuery}
         onSearchChange={setSearchQuery}
       />
 
-      
       <div className="p-6 space-y-4">
-        {/* Actions Bar */}
-     
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <Filter className="h-4 w-4 text-muted-foreground" />
@@ -120,35 +131,38 @@ export function PatientList({ patients, onAddPatient, onUpdatePatient }: Patient
               </SelectContent>
             </Select>
           </div>
-             <input
-        type="file"
-        accept=".csv"
-     ref=   {fileInputRef}}
-        onChange={handleImportCSV}
-        style={{ display: 'none' }}
-      />
-      <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
-        Importar CSV
-      </Button>
-      <Button variant="outline" onClick={handleExportCSV}>
-        Exportar CSV
-      </Button>   
-          <Button onClick={() => setShowForm(true)}>
-     
-            <Plus className="h-4 w-4" />
-            Novo Paciente
-          </Button>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="file"
+              accept=".csv"
+              ref={fileInputRef}
+              onChange={handleImportCSV}
+              style={{ display: 'none' }}
+            />
+            <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
+              Importar CSV
+            </Button>
+            <Button variant="outline" onClick={handleExportCSV}>
+              Exportar CSV
+            </Button>
+            <Button variant="outline" onClick={handleClearPatients} disabled={patients.length === 0}>
+              Limpar Lista
+            </Button>
+            <Button onClick={() => setShowForm(true)}>
+              <Plus className="h-4 w-4" />
+              Novo Paciente
+            </Button>
+          </div>
         </div>
 
-        {/* Table */}
-        <PatientTable 
+        <PatientTable
           patients={filteredPatients}
           onViewPatient={setViewingPatient}
           onEditPatient={handleEditPatient}
         />
       </div>
 
-      {/* Modals */}
       {showForm && (
         <PatientForm
           patient={selectedPatient}

@@ -271,12 +271,40 @@ export function usePatients(userId: string | undefined) {
     }
   };
 
+  const clearPatients = async () => {
+    if (!userId) return;
+
+    try {
+      const { error } = await supabase
+        .from('patients')
+        .delete()
+        .eq('user_id', userId);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Lista limpa',
+        description: 'Todos os pacientes foram removidos com sucesso.',
+      });
+
+      await fetchPatients();
+    } catch (error) {
+      console.error('Error clearing patients:', error);
+      toast({
+        title: 'Erro ao limpar lista',
+        description: 'Tente novamente mais tarde.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   return {
     patients,
     loading,
     addPatient,
     updatePatient,
     deletePatient,
+    clearPatients,
     refetch: fetchPatients,
   };
 }
