@@ -19,9 +19,10 @@ interface PatientListProps {
   patients: Patient[];
   onAddPatient: (patient: Partial<Patient>) => void;
   onUpdatePatient: (patient: Partial<Patient>) => void;
+  onClearPatients: () => void;
 }
 
-export function PatientList({ patients, onAddPatient, onUpdatePatient }: PatientListProps) {
+export function PatientList({ patients, onAddPatient, onUpdatePatient, onClearPatients }: PatientListProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [showForm, setShowForm] = useState(false);
@@ -54,6 +55,15 @@ export function PatientList({ patients, onAddPatient, onUpdatePatient }: Patient
     setShowForm(true);
   };
 
+  const handleClearPatients = () => {
+    if (patients.length === 0) return;
+
+    const confirmed = window.confirm('Tem certeza que deseja limpar toda a lista de pacientes?');
+    if (!confirmed) return;
+
+    onClearPatients();
+  };
+
   return (
     <div className="flex-1">
       <Header 
@@ -83,10 +93,15 @@ export function PatientList({ patients, onAddPatient, onUpdatePatient }: Patient
             </Select>
           </div>
           
-          <Button onClick={() => setShowForm(true)}>
-            <Plus className="h-4 w-4" />
-            Novo Paciente
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={handleClearPatients} disabled={patients.length === 0}>
+              Limpar Lista
+            </Button>
+            <Button onClick={() => setShowForm(true)}>
+              <Plus className="h-4 w-4" />
+              Novo Paciente
+            </Button>
+          </div>
         </div>
 
         {/* Table */}

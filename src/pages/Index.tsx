@@ -15,7 +15,7 @@ const Index = () => {
   const [activeView, setActiveView] = useState('dashboard');
   const navigate = useNavigate();
   const { user, loading: authLoading, signOut } = useAuth();
-  const { patients, loading: patientsLoading, addPatient, updatePatient } = usePatients(user?.id);
+  const { patients, loading: patientsLoading, addPatient, updatePatient, clearPatients } = usePatients(user?.id);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -67,6 +67,7 @@ const Index = () => {
             patients={patients} 
             onAddPatient={addPatient}
             onUpdatePatient={updatePatient}
+            onClearPatients={clearPatients}
           />
         );
       case 'calendar':
